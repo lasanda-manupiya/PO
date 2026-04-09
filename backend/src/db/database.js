@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
+import { hashPassword } from '../services/authService.js';
 
 let db;
 
@@ -19,6 +20,15 @@ export async function getDb() {
   return db;
 }
 
+async function ensureUsersColumns(database) {
+  const columns = await database.all('PRAGMA table_info(users)');
+  const hasPasswordHash = columns.some((column) => column.name === 'password_hash');
+
+  if (!hasPasswordHash) {
+    await database.exec("ALTER TABLE users ADD COLUMN password_hash TEXT");
+  }
+}
+
 async function initializeSchema(database) {
   await database.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -26,6 +36,7 @@ async function initializeSchema(database) {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       role TEXT NOT NULL DEFAULT 'requester',
+      password_hash TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -81,17 +92,24 @@ async function initializeSchema(database) {
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
   `);
+
+  await ensureUsersColumns(database);
 }
 
 async function seedData(database) {
   const userCount = await database.get('SELECT COUNT(*) AS count FROM users');
   if (userCount.count > 0) return;
 
+  const alicePassword = await hashPassword('alice123');
+  const bobPassword = await hashPassword('bob123');
+  const caraPassword = await hashPassword('cara123');
+
   await database.run(
-    `INSERT INTO users (name, email, role) VALUES
-      ('Alice Manager', 'alice@example.com', 'manager'),
-      ('Bob Requester', 'bob@example.com', 'requester'),
-      ('Cara Approver', 'cara@example.com', 'approver')`
+    `INSERT INTO users (name, email, role, password_hash) VALUES
+      ('Alice Manager', 'alice@example.com', 'manager', ?),
+      ('Bob Requester', 'bob@example.com', 'requester', ?),
+      ('Cara Approver', 'cara@example.com', 'approver', ?)`,
+    [alicePassword, bobPassword, caraPassword]
   );
 
   await database.run(

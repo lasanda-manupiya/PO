@@ -7,14 +7,16 @@ function nextPoNumber() {
   return `PO-${year}-${random}`;
 }
 
-export async function listPurchaseOrders(_req, res, next) {
+export async function listPurchaseOrders(req, res, next) {
   try {
     const db = await getDb();
     const rows = await db.all(
       `SELECT po.*, p.name AS project_name
        FROM purchase_orders po
        JOIN projects p ON p.id = po.project_id
-       ORDER BY po.id DESC`
+       WHERE p.user_id = ?
+       ORDER BY po.id DESC`,
+      [req.user.id]
     );
     res.json(rows);
   } catch (error) {
@@ -26,23 +28,25 @@ export async function createPurchaseOrder(req, res, next) {
   try {
     const {
       project_id,
-      requested_by,
       supplier_name,
       request_date = new Date().toISOString().slice(0, 10),
       status = 'draft',
       po_number = nextPoNumber(),
     } = req.body;
 
-    if (!project_id || !requested_by || !supplier_name) {
-      return res.status(400).json({ message: 'project_id, requested_by, and supplier_name are required' });
+    if (!project_id || !supplier_name) {
+      return res.status(400).json({ message: 'project_id and supplier_name are required' });
     }
 
     const db = await getDb();
+    const project = await db.get('SELECT id FROM projects WHERE id = ? AND user_id = ?', [project_id, req.user.id]);
+    if (!project) return res.status(403).json({ message: 'Project access denied' });
+
     const result = await db.run(
       `INSERT INTO purchase_orders
        (project_id, po_number, requested_by, supplier_name, request_date, status)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [project_id, po_number, requested_by, supplier_name, request_date, status]
+      [project_id, po_number, req.user.id, supplier_name, request_date, status]
     );
 
     const row = await db.get('SELECT * FROM purchase_orders WHERE id = ?', [result.lastID]);
@@ -55,7 +59,13 @@ export async function createPurchaseOrder(req, res, next) {
 export async function getPurchaseOrderById(req, res, next) {
   try {
     const db = await getDb();
-    const po = await db.get('SELECT * FROM purchase_orders WHERE id = ?', [req.params.id]);
+    const po = await db.get(
+      `SELECT po.*
+       FROM purchase_orders po
+       JOIN projects p ON p.id = po.project_id
+       WHERE po.id = ? AND p.user_id = ?`,
+      [req.params.id, req.user.id]
+    );
     if (!po) return res.status(404).json({ message: 'Purchase order not found' });
 
     const items = await db.all('SELECT * FROM po_items WHERE po_id = ?', [req.params.id]);
@@ -69,6 +79,9 @@ export async function getPurchaseOrderById(req, res, next) {
 export async function listPurchaseOrdersByProject(req, res, next) {
   try {
     const db = await getDb();
+    const project = await db.get('SELECT id FROM projects WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    if (!project) return res.status(403).json({ message: 'Project access denied' });
+
     const rows = await db.all('SELECT * FROM purchase_orders WHERE project_id = ? ORDER BY id DESC', [req.params.id]);
     res.json(rows);
   } catch (error) {
@@ -82,7 +95,13 @@ export async function updatePurchaseOrderStatus(req, res, next) {
     if (!status) return res.status(400).json({ message: 'status is required' });
 
     const db = await getDb();
-    const existing = await db.get('SELECT * FROM purchase_orders WHERE id = ?', [req.params.id]);
+    const existing = await db.get(
+      `SELECT po.*
+       FROM purchase_orders po
+       JOIN projects p ON p.id = po.project_id
+       WHERE po.id = ? AND p.user_id = ?`,
+      [req.params.id, req.user.id]
+    );
     if (!existing) return res.status(404).json({ message: 'Purchase order not found' });
 
     const approvalDate = status === 'approved' ? new Date().toISOString().slice(0, 10) : null;
