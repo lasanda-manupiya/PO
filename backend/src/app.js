@@ -5,6 +5,7 @@ import projectsRoutes from './routes/projectsRoutes.js';
 import purchaseOrdersRoutes from './routes/purchaseOrdersRoutes.js';
 import itemsRoutes from './routes/itemsRoutes.js';
 import reportsRoutes from './routes/reportsRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 import { getDb } from './db/database.js';
 
 const app = express();
@@ -21,6 +22,7 @@ app.get('/health', async (_req, res, next) => {
   }
 });
 
+app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/projects', projectsRoutes);
 app.use('/purchase-orders', purchaseOrdersRoutes);

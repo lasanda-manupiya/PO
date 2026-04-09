@@ -7,8 +7,11 @@ import {
 } from '../controllers/purchaseOrdersController.js';
 import { createItem, listItemsByPurchaseOrder } from '../controllers/itemsController.js';
 import { createApprovalLog, listApprovalsByPurchaseOrder } from '../controllers/approvalsController.js';
+import { requireAuth } from '../middleware/authMiddleware.js';
 
 const router = Router();
+
+router.use(requireAuth);
 
 router.get('/', listPurchaseOrders);
 router.post('/', createPurchaseOrder);
